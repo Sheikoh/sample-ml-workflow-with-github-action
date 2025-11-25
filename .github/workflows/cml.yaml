@@ -87,7 +87,8 @@ jobs:
         run: |
           cml runner launch \
             --cloud=aws \
-            --cloud-region=us-west \
+            --cloud-region=eu-west-3 \
+            --cloud-image=nvidia \
             --cloud-type=${{ env.INSTANCE_TYPE }} \
             --labels=cml-runner
 
