@@ -52,6 +52,7 @@ jobs:
         # We use a dummy URI so tests don't hit the production server
         env:
           MLFLOW_TRACKING_URI: "file:///tmp/mlruns"
+          PYTHONPATH: .
         run: pytest tests/
 
   # ==============================================================================
