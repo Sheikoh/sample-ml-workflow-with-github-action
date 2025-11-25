@@ -1,12 +1,15 @@
 name: californian_housing_market
-docker_env:
-  image: jedha/sample-mlflow-server
-  environment: [
-    "MLFLOW_TRACKING_URI",
-    "MLFLOW_EXPERIMENT_ID",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY"
-  ]
+
+# We do not specify a 'docker_env' here because in our CI/CD pipeline
+# we instruct MLflow to use the existing environment via the flag:
+# --env-manager=local
+
 entry_points:
   main:
-    command: "python app/train.py"
+    parameters:
+      n_estimators: {type: int, default: 100}
+      criterion: {type: string, default: "squared_error"}
+      experiment_name: {type: string, default: "california_housing"}
+    
+    # This command maps the MLProject parameters to the python script arguments
+    command: "python app/train.py --n_estimators {n_estimators} --criterion {criterion} --experiment_name {experiment_name}"

@@ -1,15 +1,23 @@
-FROM continuumio/miniconda3
+# Use a stable, slim Python image
+FROM python:3.11-slim
 
-WORKDIR /home
-ENV PYTHONPATH=/home
+WORKDIR /app
 
-RUN apt-get update
-RUN apt-get install nano unzip
-RUN apt install curl -y
+# Install system dependencies (curl/unzip needed for AWS CLI if you add it later)
+# For now, we just need basic python tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://get.deta.dev/cli.sh | sh
+# Copy requirements first (Docker caching layer)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the application
 COPY . .
-RUN pip install -r requirements.txt
 
+# Set Python path so 'app' module is found
+ENV PYTHONPATH=/app
+
+# Default command
 CMD ["python", "app/train.py"]

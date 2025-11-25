@@ -1,0 +1,147 @@
+name: Continuous Training Pipeline
+
+# ==============================================================================
+# 1. TRIGGERS
+# ==============================================================================
+on:
+  # Trigger A: Code Changes (The "Developer" Loop)
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  # Trigger B: Data Changes (The "Airflow" Loop)
+  repository_dispatch:
+    types: [trigger-training]
+
+  # NEW: Add Inputs for Manual Trigger
+  workflow_dispatch:
+    inputs:
+      ec2_instance_type:
+        description: 'AWS EC2 Instance Type'
+        required: true
+        default: 't3.micro' # Default to Free Tier safe option
+        type: choice
+        options:
+          - t3.micro    # Free Tier (1GB RAM) - Good for debugging
+          - t3.medium   # Paid (~$0.04/hr) - Good for small training
+          - g4dn.xlarge # GPU (~$0.50/hr) - Real Deep Learning
+
+jobs:
+  # ==============================================================================
+  # JOB 1: CI GATEKEEPER (Runs on GitHub Cloud)
+  # Goal: Catch bugs cheaply before provisioning expensive EC2 infrastructure.
+  # ==============================================================================
+  run-tests:
+    name: "1. Unit Tests (CI)"
+    runs-on: ubuntu-latest # <--- Standard GitHub Runner (Free tier)
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        # Installs exact versions from requirements.txt
+        run: pip install -r requirements.txt
+
+      - name: Run Pytest
+        # We use a dummy URI so tests don't hit the production server
+        env:
+          MLFLOW_TRACKING_URI: "file:///tmp/mlruns"
+        run: pytest tests/
+
+  # ==============================================================================
+  # JOB 2: PROVISION INFRASTRUCTURE (Runs on GitHub Cloud)
+  # Goal: Use CML to wake up an EC2 instance.
+  # This ONLY runs if 'run-tests' passes.
+  # ==============================================================================
+  deploy-runner:
+    name: "2. Provision EC2 Runner"
+    needs: run-tests # <--- Orchestration dependency
+    runs-on: ubuntu-latest
+    env:
+      REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: iterative/setup-cml@v1
+      
+      - name: Launch AWS EC2 Instance
+        run: |
+          cml runner launch \
+            --cloud=aws \
+            --cloud-region=eu-west-3 \
+            --cloud-type=${{ env.INSTANCE_TYPE }} \
+            --labels=cml-runner \
+            --idle-timeout=300 # Auto-terminate instance after 5 mins of silence
+
+  # ==============================================================================
+  # JOB 3: CONTINUOUS TRAINING (Runs on EC2)
+  # Goal: Execute training on the specific machine we just created.
+  # ==============================================================================
+  train-model:
+    name: "3. Train & Report (CT)"
+    needs: deploy-runner # <--- Wait for EC2 to be ready
+    runs-on: [self-hosted, cml-runner] # <--- TARGETS THE EC2 INSTANCE
+    
+    # Permissions needed for CML to comment on PRs
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    # Run inside a clean Docker container on the EC2 instance
+    container:
+      image: python:3.11-slim
+    
+    # Inject Secrets for the Training Script
+    env:
+      REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_EXPERIMENT_NAME: "california_housing" # Env Var for train.py
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # We need CML installed inside the container to send the report
+      - uses: iterative/setup-cml@v1
+      
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train via MLProject
+        # We use 'mlflow run' to execute the MLProject file.
+        # --env-manager=local tells it to use the pip packages we just installed.
+        run: |
+          mlflow run . \
+            --env-manager=local \
+            -P n_estimators=100 \
+            -P criterion="squared_error"
+
+      # ==============================================================================
+      # REPORTING (GitOps)
+      # ==============================================================================
+      - name: Create CML Report
+        # Only comment if this is a PR or Push (Airflow triggers don't need PR comments)
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: |
+          echo "## 🤖 Model Training Report" > report.md
+          echo "Training executed on AWS EC2 instance." >> report.md
+          echo "" >> report.md
+          echo "| Metric | Status |" >> report.md
+          echo "| :--- | :--- |" >> report.md
+          echo "| **CI Tests** | ✅ Passed |" >> report.md
+          echo "| **Infrastructure** | AWS EC2 (t3.medium) |" >> report.md
+          echo "" >> report.md
+          echo "### 🔗 [View Full Run in MLflow](${{ secrets.MLFLOW_TRACKING_URI }})" >> report.md
+          
+          # Send report to GitHub PR
+          cml comment create report.md
