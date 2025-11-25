@@ -64,12 +64,23 @@ jobs:
     needs: run-tests # <--- Orchestration dependency
     runs-on: ubuntu-latest
     env:
-      REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v3
       - uses: iterative/setup-cml@v1
+
+      - name: Set Instance Type
+        run: |
+          # Check if input exists (Manual trigger), otherwise default to t3.medium
+          if [ -z "${{ inputs.ec2_instance_type }}" ]; then
+            echo "INSTANCE_TYPE=t3.medium" >> $GITHUB_ENV
+            echo "📢 Auto-trigger detected. Defaulting to t3.medium"
+          else
+            echo "INSTANCE_TYPE=${{ inputs.ec2_instance_type }}" >> $GITHUB_ENV
+            echo "📢 Manual selection: ${{ inputs.ec2_instance_type }}"
+          fi
       
       - name: Launch AWS EC2 Instance
         run: |
