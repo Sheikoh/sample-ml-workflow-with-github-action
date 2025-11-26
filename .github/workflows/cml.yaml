@@ -56,17 +56,41 @@ jobs:
   # ==============================================================================
   # JOB 2: TRIGGER AIRFLOW (Optional - if you have the bridge)
   # ==============================================================================
-  # trigger-airflow:
-  #   needs: build-and-push
-  #   if: github.ref == 'refs/heads/main'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Trigger Airflow DAG
-  #       env:
-  #         AIRFLOW_URL: ${{ secrets.AIRFLOW_URL }}
-  #         AIRFLOW_USER: ${{ secrets.AIRFLOW_USERNAME }}
-  #         AIRFLOW_PASS: ${{ secrets.AIRFLOW_PASSWORD }}
-  #         DAG_ID: "github_ec2_ml_training"
-  #       run: |
-  #         # (Your curl command to trigger Airflow goes here)
-  #         echo "Triggering Airflow to pull image: ${{ secrets.DOCKER_USERNAME }}/sample-ml-workflow:latest"
+  trigger-airflow:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Airflow DAG
+        env:
+          AIRFLOW_URL: ${{ secrets.AIRFLOW_URL }}
+          AIRFLOW_USER: ${{ secrets.AIRFLOW_USERNAME }}
+          AIRFLOW_PASS: ${{ secrets.AIRFLOW_PASSWORD }}
+          DAG_ID: "github_ec2_ml_training"
+        run: |
+          echo "🚀 Triggering Airflow DAG: $DAG_ID"
+          echo "🎯 Target: $AIRFLOW_URL"
+          
+          # We pass the Commit SHA in the config so Airflow knows exactly what to run
+          # (Optional, but good practice if you use the hash in your DAG)
+          JSON_DATA='{"conf": {"git_hash": "${{ github.sha }}"}}'
+
+          # THE CALL
+          # -u: Basic Auth (User:Pass)
+          # -H "ngrok-skip...": Bypasses the Ngrok free-tier warning page
+          response=$(curl -X POST \
+            "${AIRFLOW_URL}/api/v2/dags/${DAG_ID}/dagRuns" \
+            --user "${AIRFLOW_USER}:${AIRFLOW_PASS}" \
+            -H "Content-Type: application/json" \
+            -H "ngrok-skip-browser-warning: true" \
+            -d "$JSON_DATA" \
+            --write-out "%{http_code}" --silent --output /dev/null)
+
+          # VALIDATION
+          if [[ "$response" == "200" ]] || [[ "$response" == "201" ]]; then
+            echo "✅ Success! Airflow responded with $response"
+          else
+            echo "❌ Failed! Airflow responded with $response"
+            echo "Check your AIRFLOW_URL and credentials."
+            exit 1
+          fi

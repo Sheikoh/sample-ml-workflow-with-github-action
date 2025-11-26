@@ -9,7 +9,7 @@ docker_env:
 entry_points:
   main:
     parameters:
-      n_estimators: {type: int, default: 100}
+      n_estimators: {type: int, default: 30}
       criterion: {type: string, default: "squared_error"}
       experiment_name: {type: string, default: "california_housing"}
     

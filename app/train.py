@@ -43,7 +43,7 @@ def create_pipeline():
         ("Random_Forest", RandomForestRegressor())
     ])
 
-def train_model(pipe, X_train, y_train, param_grid, cv=3):
+def train_model(pipe, X_train, y_train, param_grid, cv=2):
     """
     Train the model using GridSearchCV.
     """
@@ -60,7 +60,7 @@ def train_model(pipe, X_train, y_train, param_grid, cv=3):
 if __name__ == "__main__":
     # 1. Parse ONLY Model Hyperparameters
     parser = argparse.ArgumentParser(description="Random Forest Training Script")
-    parser.add_argument("--n_estimators", type=int, default=100)
+    parser.add_argument("--n_estimators", type=int, default=30)
     parser.add_argument("--criterion", type=str, default="squared_error")
     parser.add_argument("--experiment_name", type=str, default="california_housing")
     args = parser.parse_args()
