@@ -2,6 +2,7 @@ import requests
 import os
 import sys
 import json
+from datetime import datetime, timezone
 
 # ------------------------------------------------------------------
 # CONFIGURATION
@@ -69,11 +70,13 @@ def trigger_dag(token):
     auth_headers["Authorization"] = f"Bearer {token}"
     
     # Payload with Git Hash configuration
+    current_time = datetime.now(timezone.utc).isoformat()
+
     payload = {
+        "logical_date": current_time,
         "conf": {"git_hash": GIT_HASH},
         "note": "Triggered via GitHub Actions CI"
     }
-
     try:
         response = requests.post(trigger_url, json=payload, headers=auth_headers, timeout=10)
         response.raise_for_status()
