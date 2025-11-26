@@ -43,7 +43,7 @@ def create_pipeline():
         ("Random_Forest", RandomForestRegressor())
     ])
 
-def train_model(pipe, X_train, y_train, param_grid, cv=1):
+def train_model(pipe, X_train, y_train, param_grid, cv=2):
     """
     Train the model using GridSearchCV.
     """
