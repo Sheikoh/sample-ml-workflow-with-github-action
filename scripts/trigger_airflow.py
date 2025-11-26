@@ -9,7 +9,7 @@ import json
 AIRFLOW_URL = os.getenv("AIRFLOW_URL") # e.g., https://xyz.ngrok-free.app
 USERNAME = os.getenv("AIRFLOW_USER")
 PASSWORD = os.getenv("AIRFLOW_PASS")
-DAG_ID = os.getenv("DAG_ID")
+DAG_ID = os.getenv("DAG_ID", "github_ec2_ml_training")
 GIT_HASH = sys.argv[1] if len(sys.argv) > 1 else "main"
 
 if not AIRFLOW_URL:
@@ -60,7 +60,7 @@ def trigger_dag(token):
     """
     # Note: Airflow 3 API structure might differ slightly (public/v1 vs api/v1)
     # We try the standard V1 endpoint first.
-    trigger_url = f"{AIRFLOW_URL}/api/v1/dags/{DAG_ID}/dagRuns"
+    trigger_url = f"{AIRFLOW_URL}/api/v2/dags/{DAG_ID}/dagRuns"
     
     print(f"🚀 Triggering DAG: {DAG_ID}")
     
