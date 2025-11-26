@@ -61,6 +61,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Python Dependencies
+        run: pip install requests
+
       - name: Trigger Airflow DAG
         env:
           AIRFLOW_URL: ${{ secrets.AIRFLOW_URL }}
@@ -68,29 +73,5 @@ jobs:
           AIRFLOW_PASS: ${{ secrets.AIRFLOW_PASSWORD }}
           DAG_ID: "github_ec2_ml_training"
         run: |
-          echo "🚀 Triggering Airflow DAG: $DAG_ID"
-          echo "🎯 Target: $AIRFLOW_URL"
-          
-          # We pass the Commit SHA in the config so Airflow knows exactly what to run
-          # (Optional, but good practice if you use the hash in your DAG)
-          JSON_DATA='{"conf": {"git_hash": "${{ github.sha }}"}}'
-
-          # THE CALL
-          # -u: Basic Auth (User:Pass)
-          # -H "ngrok-skip...": Bypasses the Ngrok free-tier warning page
-          response=$(curl -X POST \
-            "${AIRFLOW_URL}/api/v2/dags/${DAG_ID}/dagRuns" \
-            --user "${AIRFLOW_USER}:${AIRFLOW_PASS}" \
-            -H "Content-Type: application/json" \
-            -H "ngrok-skip-browser-warning: true" \
-            -d "$JSON_DATA" \
-            --write-out "%{http_code}" --silent --output /dev/null)
-
-          # VALIDATION
-          if [[ "$response" == "200" ]] || [[ "$response" == "201" ]]; then
-            echo "✅ Success! Airflow responded with $response"
-          else
-            echo "❌ Failed! Airflow responded with $response"
-            echo "Check your AIRFLOW_URL and credentials."
-            exit 1
-          fi
+          # Run the python script, passing the commit hash as an argument
+          python scripts/trigger_airflow.py ${{ github.sha }}
