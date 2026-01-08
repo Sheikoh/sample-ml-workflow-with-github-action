@@ -1,116 +1,144 @@
-import argparse
-import pandas as pd
-import time
-import os
+#---- IMPORT LIBRAIRIES ----
+
 import mlflow
-import mlflow.sklearn
-from sklearn.model_selection import train_test_split, GridSearchCV
+from mlflow.models.signature import infer_signature
+
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, root_mean_squared_error
 
-# ------------------------------------------------------------------------------
-# HELPER FUNCTIONS
-# ------------------------------------------------------------------------------
+from dotenv import load_dotenv
+import os
 
-def load_data(url):
-    """
-    Load dataset from the given URL.
-    """
-    try:
-        df = pd.read_csv(url)
-        print(f"✅ Data loaded successfully. Shape: {df.shape}")
-        return df
-    except Exception as e:
-        print(f"❌ Error loading data: {e}")
-        raise
+import func_cleaning as fc
 
-def preprocess_data(df, test_size=0.2, random_state=42):
-    """
-    Split the dataframe into X (features) and y (target).
-    """
-    print("⚙️ Preprocessing data...")
-    X = df.iloc[:, :-1]
-    y = df.iloc[:, -1]
-    return train_test_split(X, y, test_size=test_size, random_state=random_state)
+#---- VARIABLES ----
+weather_data_path = 'https://renergies99-lead-bucket.s3.eu-west-3.amazonaws.com/public/openweathermap/merge_openweathermap_cleaned.csv'
+solar_data_path = 'https://renergies99-lead-bucket.s3.eu-west-3.amazonaws.com/public/solar/raw_solar_data.csv'
+landsat_data_path = 'https://renergies99-lead-bucket.s3.eu-west-3.amazonaws.com/public/LandSat/result_EarthExplorer_region_ARA.csv'
+prod_data_path = 'https://renergies99-lead-bucket.s3.eu-west-3.amazonaws.com/public/prod/eCO2mix_RTE_Auvergne-Rhone-Alpes_cleaned.csv'
 
-def create_pipeline():
-    """
-    Create a machine learning pipeline with StandardScaler and RandomForestRegressor.
-    """
-    return Pipeline(steps=[
-        ("standard_scaler", StandardScaler()),
-        ("Random_Forest", RandomForestRegressor())
-    ])
+target = 'tch_solaire_(%)'
+col_solar = ['Time', 'Ap', '10cm', 'K index Planetary'] # ALWAYS include a 'Time' column (used to merge datasets)
+cities_list = ['Moulins', 'Annecy', 'Nyons', 'Saint-Étienne', 'Aurillac']
 
-def train_model(pipe, X_train, y_train, param_grid, cv=2):
-    """
-    Train the model using GridSearchCV.
-    """
-    print(f"🏋️ Training model with grid: {param_grid}")
-    # verbose=0 to keep logs clean in CI/CD
-    model = GridSearchCV(pipe, param_grid, verbose=0, cv=cv, scoring="r2")
-    model.fit(X_train, y_train)
-    return model
+#---- Data Collection ----
+full_dataset = fc.create_full_dataset(weather_data_path, solar_data_path, landsat_data_path, prod_data_path, 
+                                   cities_list, col_solar, target)
 
-# ------------------------------------------------------------------------------
-# MAIN EXECUTION
-# ------------------------------------------------------------------------------
+print("Data collected")
 
-if __name__ == "__main__":
-    # 1. Parse ONLY Model Hyperparameters
-    parser = argparse.ArgumentParser(description="Random Forest Training Script")
-    parser.add_argument("--n_estimators", type=int, default=20)
-    parser.add_argument("--criterion", type=str, default="squared_error")
-    parser.add_argument("--experiment_name", type=str, default="california_housing")
-    args = parser.parse_args()
-    
-    # Optional: If you want to force using ID, you would grab MLFLOW_EXPERIMENT_ID
-    # But as discussed, Name is safer for portability.
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
-    mlflow.set_experiment(args.experiment_name)
-    
-    print(f"🚀 Starting MLflow Run in experiment: {args.experiment_name}")
+#---- DATA CLEANING ----
 
-    # 3. Configuration
-    DATA_URL = "https://julie-2-next-resources.s3.eu-west-3.amazonaws.com/full-stack-full-time/linear-regression-ft/californian-housing-market-ft/california_housing_market.csv"
-    
-    param_grid = {
-        "Random_Forest__n_estimators": [args.n_estimators],
-        "Random_Forest__criterion": [args.criterion]
-    }
+df = full_dataset.copy()
+#print(f'df shape: {df.shape}')
 
-    # 4. Start Run
-    with mlflow.start_run():
-        start_time = time.time()
+# gestion des Nan
+df_no_Nan = fc.handle_nan(df)
+#print(f'df_no_Nan shape: {df_no_Nan.shape}')
 
-        # Load & Preprocess
-        df = load_data(DATA_URL) # Ensure load_data is defined in your script
-        X_train, X_test, y_train, y_test = preprocess_data(df)
+# clean data (convert int to float, select type columns, remove unique values)
+df_clean = fc.clean_dataframe(df_no_Nan, type='numeric')
+#print(f'df_clean shape: {df_clean.shape}')
+cols = df_clean.select_dtypes(include=["int64", "int32"]).columns.to_list()
+df_clean[cols] = df_clean[cols].astype(float) # Modif liée à la signature dans MLFlow qui retournait une erreur
 
-        # Train
-        pipe = create_pipeline() # Ensure create_pipeline is defined
-        model = train_model(pipe, X_train, y_train, param_grid)
+#suppression des outliers
+df_no_outliers = fc.remove_outliers(df_clean, target, method='iqr')
+#print(f'df_no_outliers shape: {df_no_outliers.shape}')
 
-        # Logging
-        best_score = model.best_score_
-        test_score = model.score(X_test, y_test)
-        
-        print(f"📊 Train CV Score: {best_score:.4f}")
-        print(f"📊 Test Score:     {test_score:.4f}")
+print("Data cleaned")
+print(f'Dataset shape : {df_no_outliers.shape}')
 
-        mlflow.log_param("n_estimators", args.n_estimators)
-        mlflow.log_param("criterion", args.criterion)
-        
-        mlflow.log_metric("train_cv_score", best_score)
-        mlflow.log_metric("test_score", test_score)
-        mlflow.log_metric("training_time", time.time() - start_time)
+#------------------
+#---- TRAINING ----
+#------------------
 
-        print("💾 Saving model to MLflow...")
-        mlflow.sklearn.log_model(
-            sk_model=model.best_estimator_,
-            artifact_path="model",
-            registered_model_name="random_forest_regressor"
-        )
-        
-        print("✅ Training Complete.")
+print("Training in progress....")
+
+# Variables
+load_dotenv()
+os.environ["MLFLOW_TRACKING_URI"] = "https://renergies99lead-mlflow.hf.space/"
+EXPERIMENT_NAME = "REnergie-lead"
+
+
+# Features and target definition
+X = df_no_outliers.drop(target, axis=1)
+y = df_no_outliers[target]
+
+x_train, x_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=24
+)
+
+input_example = x_train.iloc[:3]
+
+# MLflow config
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+mlflow.set_experiment(EXPERIMENT_NAME)
+
+experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+
+# Pipeline (Scaler + Model)
+# pas de ColumnTransformer car seulement des colonnes numériques
+pipeline = Pipeline(
+    steps=[
+        ("scaler", StandardScaler()),
+        ("model", LinearRegression())
+    ]
+)
+
+run_description = (
+    f"Target: {target}\n"
+    "Estimator: Linear Regression\n"
+    "StandardScaler + LinearRegression\n"
+    "Base run with solarposition, basic cleaning and outliers removal (IQR)\n"
+    "No feature engineering"
+)
+
+# MLflow run
+with mlflow.start_run(experiment_id=experiment.experiment_id, description=run_description):
+    # Train
+    pipeline.fit(x_train, y_train)
+
+    # Predict
+    y_pred = pipeline.predict(x_test)
+
+    # Metrics
+    mae = mean_absolute_error(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = root_mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    n = len(y_test)
+    p = x_test.shape[1]
+    adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+
+    # MLflow signature
+    signature = infer_signature(x_train, pipeline.predict(x_train))
+
+    # Log metrics
+    mlflow.log_metrics({
+        "MAE": mae,
+        "MSE": mse,
+        "RMSE": rmse,
+        "R2": r2,
+        "Adjusted_R2": adj_r2
+    })
+
+    # Log params
+    mlflow.log_param("scaler", "StandardScaler")
+    mlflow.log_param("model", "LinearRegression")
+    mlflow.log_param("test_size", 0.3)
+
+
+    # Log model
+    mlflow.sklearn.log_model(
+        pipeline,
+        name="standard_scaler_linear_regression",
+        input_example=input_example,
+        signature=signature,
+        code_paths=["func_feat_eng.py", "Model_func.py"]
+    )
+
