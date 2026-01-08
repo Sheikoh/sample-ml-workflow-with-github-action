@@ -1,10 +1,10 @@
-name: californian_housing_market
+name: REnergie
 
 # 1. Use Docker Environment
 # Since you are building the image dynamically with --build-image, 
 # you just need a basic Dockerfile pointer.
 docker_env:
-  image: jedha/sample-ml-workflow:latest
+  image: sheikoh/image-mlflow:latest
 
 entry_points:
   main:
