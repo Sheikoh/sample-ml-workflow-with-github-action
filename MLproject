@@ -8,10 +8,10 @@ docker_env:
 
 entry_points:
   main:
-    parameters:
-      n_estimators: {type: int, default: 30}
-      criterion: {type: string, default: "squared_error"}
-      experiment_name: {type: string, default: "california_housing"}
+#    parameters:
+#      n_estimators: {type: int, default: 30}
+#      criterion: {type: string, default: "squared_error"}
+#      experiment_name: {type: string, default: "c"}
     
     # 2. The Command
-    command: "python app/train.py --n_estimators {n_estimators} --criterion {criterion} --experiment_name {experiment_name}"
+    command: "python app/train.py"
