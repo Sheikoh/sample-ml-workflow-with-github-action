@@ -1,4 +1,4 @@
-name: REnergie
+name: renergie
 
 # 1. Use Docker Environment
 # Since you are building the image dynamically with --build-image, 
