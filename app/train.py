@@ -12,7 +12,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, r
 from dotenv import load_dotenv
 import os
 
-import func_cleaning as fc
+from . import func_cleaning as fc
 
 
 

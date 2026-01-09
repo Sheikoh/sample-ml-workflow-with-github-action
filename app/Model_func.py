@@ -15,7 +15,7 @@ import mlflow
 from datetime import timedelta
 import pvlib 
 
-import func_feat_eng as ffe
+from . import func_feat_eng as ffe
 
 #--------------COLLECT DATA FUNCTIONS---------------------------------------
 #---Prod

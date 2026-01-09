@@ -3,7 +3,7 @@
 #---- IMPORTS -----
 import pandas as pd
 
-import Model_func as mf
+from . import Model_func as mf
 from scipy.stats import zscore
 
 #---- COLLECT DATA -----
